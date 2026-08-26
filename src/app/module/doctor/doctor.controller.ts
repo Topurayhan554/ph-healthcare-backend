@@ -3,7 +3,11 @@ import httpStatus from "http-status";
 import { catchAsync } from "../../utils/catchAsync";
 import { sendResponse } from "../../utils/sendResponse";
 import { DoctorServices } from "./doctor.service";
-import { ApplyAsDoctorValidationZodSchema } from "./doctor.validation";
+import {
+  ApplyAsDoctorValidationZodSchema,
+  ApproveDoctorValidationZodSchema,
+  VerifyDoctorEmailValidationZodSchema,
+} from "./doctor.validation";
 
 const applyAsDoctor = catchAsync(async (req: Request, res: Response) => {
   const files = req.files as { [fieldname: string]: Express.Multer.File[] };
@@ -35,6 +39,63 @@ const applyAsDoctor = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const verifyDoctorEmail = catchAsync(async (req: Request, res: Response) => {
+  const zodValidationResult = VerifyDoctorEmailValidationZodSchema.safeParse(
+    req.body,
+  );
+
+  if (!zodValidationResult.success) {
+    throw new Error(zodValidationResult.error.issues[0].message);
+  }
+
+  const payload = zodValidationResult.data;
+
+  const result = await DoctorServices.verifyDoctorEmail(payload);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Doctor Email Verified Successfuly",
+    data: result,
+  });
+});
+
+const approveDoctor = catchAsync(async (req: Request, res: Response) => {
+  const zodValidationResult = ApproveDoctorValidationZodSchema.safeParse(
+    req.body,
+  );
+
+  if (!zodValidationResult.success) {
+    throw new Error(zodValidationResult.error.issues[0].message);
+  }
+
+  const payload = zodValidationResult.data;
+  const user = req.user!;
+
+  const result = await DoctorServices.approveDoctor(payload, user);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Doctor Approved Successfuly",
+    data: result,
+  });
+});
+
+const getAllDoctor = catchAsync(async (req: Request, res: Response) => {
+  const result = await DoctorServices.getAllDoctors();
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Doctor Retrieved Successfuly",
+    data: result,
+  });
+});
+
 export const DoctorController = {
   applyAsDoctor,
+  approveDoctor,
+  verifyDoctorEmail,
+  getAllDoctor,
 };

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DoctorVerificationStatus } from "../../../generated/prisma/enums";
 
 export const ApplyAsDoctorValidationZodSchema = z.object({
   user: z.object({
@@ -24,9 +25,7 @@ export const ApplyAsDoctorValidationZodSchema = z.object({
     experienceYears: z
       .number()
       .int("Experience years must be an integer")
-      .min(0, "Experience years cannot be negative")
-      .optional(),
-
+      .min(0, "Experience years cannot be negative"),
     bio: z
       .string()
       .trim()
@@ -44,4 +43,28 @@ export const ApplyAsDoctorValidationZodSchema = z.object({
       .min(5, "Contact number is invalid")
       .optional(),
   }),
+});
+export const VerifyDoctorEmailValidationZodSchema = z.object({
+  email: z.email("Invalid email address").trim().toLowerCase(),
+
+  otp: z
+    .string()
+    .trim()
+    .length(6, "OTP must be exactly 6 digits")
+    .regex(/^\d+$/, "OTP must contain only digits"),
+});
+
+export const ApproveDoctorValidationZodSchema = z.object({
+  doctorId: z.string().trim().min(1, "Doctor ID is required"),
+
+  verificationStatus: z.enum(
+    [DoctorVerificationStatus.APPROVED, DoctorVerificationStatus.REJECTED],
+    "Verification status must be either APPROVED or REJECTED",
+  ),
+
+  rejectionReason: z
+    .string()
+    .trim()
+    .min(1, "Rejection reason cannot be empty")
+    .optional(),
 });
