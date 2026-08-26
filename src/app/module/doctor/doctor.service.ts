@@ -5,6 +5,7 @@ import config from "../../config";
 import { cloudinary } from "../../lib/cloudinary";
 import { prisma } from "../../lib/prisma";
 
+// applyDoctor
 const applyAsDoctor = async (
   payload: any,
   resume: Express.Multer.File | null,
