@@ -14,6 +14,7 @@ const applyAsDoctor = catchAsync(async (req: Request, res: Response) => {
   const zodValidationResult = ApplyAsDoctorValidationZodSchema.safeParse(
     JSON.parse(req.body.data),
   );
+  // fdsfjkjdf
 
   if (!zodValidationResult.success) {
     throw new Error(zodValidationResult.error.issues[0].message);
