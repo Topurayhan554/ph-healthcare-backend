@@ -1,27 +1,31 @@
-import { transporter } from "./../../lib/nodemailer";
 import bcrypt from "bcryptjs";
 import type { UploadApiResponse } from "cloudinary";
+import crypto from "crypto";
+import { addDays, startOfDay } from "date-fns";
+import ejs from "ejs";
+import httpStatus from "http-status";
+import path from "path";
 import {
   DoctorVerificationStatus,
   Role,
+  ScheduleStatus,
 } from "../../../generated/prisma/enums";
+import { DoctorWhereInput } from "../../../generated/prisma/models";
 import config from "../../config";
+import { IQuery } from "../../interfaces";
 import { cloudinary } from "../../lib/cloudinary";
+import { transporter } from "../../lib/nodemailer";
 import { prisma } from "../../lib/prisma";
-import crypto from "crypto";
 import { redisClient } from "../../lib/redis";
-import path from "path";
-import ejs from "ejs";
+import { RequestUser } from "../../middleware/checkAuth";
+import { AppError } from "../../utils/AppError";
 import {
   IApplyAsDoctorPayload,
   IApproveDoctorPayload,
+  IUpdateDoctorProfilePayload,
   IVerifyDoctorEmailPayload,
 } from "./doctor.interface";
-import { RequestUser } from "../../middleware/checkAuth";
-import { IQuery } from "../../interfaces";
-import { DoctorWhereInput } from "../../../generated/prisma/models";
 
-// applyDoctor
 const applyAsDoctor = async (
   payload: IApplyAsDoctorPayload,
   resume: Express.Multer.File | null,
@@ -34,7 +38,10 @@ const applyAsDoctor = async (
   });
 
   if (isUserExists) {
-    throw new Error("User Already Exists With This Email");
+    throw new AppError(
+      httpStatus.CONFLICT,
+      "User Already Exists With This Email",
+    );
   }
 
   const resumeUploadResult = await new Promise<UploadApiResponse>(
@@ -51,7 +58,12 @@ const applyAsDoctor = async (
             }
 
             if (!result) {
-              return reject(new Error("No result returned from Cloudinary"));
+              return reject(
+                new AppError(
+                  httpStatus.INTERNAL_SERVER_ERROR,
+                  "No result returned from Cloudinary",
+                ),
+              );
             }
 
             resolve(result);
@@ -125,6 +137,7 @@ const applyAsDoctor = async (
   });
 
   const expirationSeconds = 60 * 60;
+
   const otpKey = `doctor-application-otp:${payload.user.email}`;
   const otpValue = crypto.randomInt(100000, 1000000).toString();
 
@@ -135,7 +148,7 @@ const applyAsDoctor = async (
     },
   });
 
-  const templatePath = path.join(
+  const tempatePath = path.join(
     process.cwd(),
     "src/app/templates/registration-user-otp.ejs",
   );
@@ -144,10 +157,10 @@ const applyAsDoctor = async (
     name: payload.user.name,
     email: payload.user.email,
     otp: otpValue,
-    expirationSeconds: expirationSeconds / 60,
+    expirationMinutes: expirationSeconds / 60,
   };
 
-  const html = await ejs.renderFile(templatePath, templateData);
+  const html = await ejs.renderFile(tempatePath, templateData);
 
   await transporter.sendMail({
     from: config.email_sender,
@@ -161,51 +174,45 @@ const applyAsDoctor = async (
 
 const verifyDoctorEmail = async (payload: IVerifyDoctorEmailPayload) => {
   const otp = payload.otp;
-  const email = payload.email.trim().toLocaleLowerCase();
+  const email = payload.email.trim().toLowerCase();
 
   const existingUser = await prisma.user.findUnique({
-    where: {
-      email,
-      role: Role.DOCTOR,
-    },
+    where: { email, role: Role.DOCTOR },
   });
 
   if (!existingUser) {
-    throw new Error("Doctor Application Not Found. Please apply again");
+    throw new AppError(
+      httpStatus.NOT_FOUND,
+      "Doctor Application Not Found. Please Apply Again.",
+    );
   }
 
   if (existingUser.emailVerified) {
-    throw new Error("Email Already Verified");
+    throw new AppError(httpStatus.CONFLICT, "Email Already Verified");
   }
 
   const otpKey = `doctor-application-otp:${email}`;
+
   const redisOtp = await redisClient.get(otpKey);
 
   if (!redisOtp) {
-    throw new Error(
-      "OTP Expired. Your Applicaiton Window Has Closed. Please Try Again.",
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "OTP Expired. Your Application Window Has Closed, Please Apply Again.",
     );
   }
 
   if (redisOtp !== otp) {
-    throw new Error("OTP Does Not Match!");
+    throw new AppError(httpStatus.BAD_REQUEST, "OTP Does Not Match");
   }
 
   await redisClient.del(otpKey);
 
   const verifiedUser = await prisma.user.update({
-    where: {
-      id: existingUser.id,
-    },
-    data: {
-      emailVerified: true,
-    },
-    omit: {
-      password: true,
-    },
-    include: {
-      doctor: true,
-    },
+    where: { id: existingUser.id },
+    data: { emailVerified: true },
+    omit: { password: true },
+    include: { doctor: true },
   });
 
   return verifiedUser;
@@ -218,31 +225,29 @@ const approveDoctor = async (
   const { doctorId, verificationStatus, rejectionReason } = payload;
 
   const existingDoctor = await prisma.doctor.findUnique({
-    where: {
-      id: doctorId,
-    },
-    include: {
-      user: true,
-    },
+    where: { id: doctorId },
+    include: { user: true },
   });
 
   if (!existingDoctor) {
-    throw new Error("Doctor Application Not Found");
+    throw new AppError(httpStatus.NOT_FOUND, "Doctor Application Not Found");
   }
 
   if (existingDoctor.isDeleted) {
-    throw new Error("Doctor Application Has Been Deletede");
+    throw new AppError(httpStatus.GONE, "Doctor Application Has Been Deleted");
   }
 
   if (!existingDoctor.user.emailVerified) {
-    throw new Error(
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
       "Doctor Has Not Verified Their Email Yet. Application Cannot Be Reviewed.",
     );
   }
 
   if (existingDoctor.verificationStatus !== DoctorVerificationStatus.PENDING) {
-    throw new Error(
-      `Doctor Application Has Already Been ${existingDoctor.verificationStatus.toLocaleLowerCase()}`,
+    throw new AppError(
+      httpStatus.CONFLICT,
+      `Doctor Application Has Already Been ${existingDoctor.verificationStatus.toLowerCase()}`,
     );
   }
 
@@ -250,23 +255,20 @@ const approveDoctor = async (
     verificationStatus === DoctorVerificationStatus.REJECTED &&
     !rejectionReason
   ) {
-    throw new Error(
-      "Rejection Reason Is Required When Rejection A Doctor Appication",
+    throw new AppError(
+      httpStatus.BAD_REQUEST,
+      "Rejection Reason Is Required When Rejecting A Doctor Application",
     );
   }
 
-  const updateDoctor = await prisma.doctor.update({
-    where: {
-      id: doctorId,
-    },
+  const updatedDoctor = await prisma.doctor.update({
+    where: { id: doctorId },
     data: {
       verificationStatus,
-
       rejectionReason:
         verificationStatus === DoctorVerificationStatus.REJECTED
           ? rejectionReason
           : null,
-
       reviewedBy: reviewer.userId,
       reviewedAt: new Date(),
     },
@@ -274,34 +276,35 @@ const approveDoctor = async (
 
   const isApproved = verificationStatus === DoctorVerificationStatus.APPROVED;
 
-  const templatePath = path.join(
+  const tempatePath = path.join(
     process.cwd(),
-    `src/app/templates/${isApproved ? "doctor-application-approved.ejs" : "doctor-application-rejected.ejs"}`,
+    `src/app/templates/${
+      isApproved
+        ? "doctor-application-approved.ejs"
+        : "doctor-application-rejected.ejs"
+    }`,
   );
 
   const templateData = {
-    name: updateDoctor.name,
-    reason: updateDoctor.rejectionReason,
+    name: updatedDoctor.name,
+    reason: updatedDoctor.rejectionReason,
   };
 
-  const html = await ejs.renderFile(templatePath, templateData);
+  const html = await ejs.renderFile(tempatePath, templateData);
 
   await transporter.sendMail({
     from: config.email_sender,
-    to: updateDoctor.email,
+    to: updatedDoctor.email,
     subject: isApproved
       ? "Your Doctor Application Has Been Approved"
       : "Your Doctor Application Has Been Rejected",
     html,
   });
 
-  return updateDoctor;
+  return updatedDoctor;
 };
 
 const getAllDoctors = async (query: IQuery) => {
-  // search , filter, sorting , pagination
-
-  // 1-> Searching
   const limit = query.limit ? Number(query.limit) : 10;
   const page = query.page ? Number(query.page) : 1;
   const skip = (page - 1) * limit;
@@ -310,22 +313,12 @@ const getAllDoctors = async (query: IQuery) => {
 
   const andConditions: DoctorWhereInput[] = [];
 
+  //Searching
   if (query.searchTerm) {
     andConditions.push({
       OR: [
-        {
-          name: {
-            contains: query.searchTerm,
-            mode: "insensitive",
-          },
-        },
-        {
-          email: {
-            contains: query.searchTerm,
-            mode: "insensitive",
-          },
-        },
-
+        { name: { contains: query.searchTerm, mode: "insensitive" } },
+        { email: { contains: query.searchTerm, mode: "insensitive" } },
         {
           specialization: {
             contains: query.searchTerm,
@@ -342,7 +335,7 @@ const getAllDoctors = async (query: IQuery) => {
     });
   }
 
-  // 2-> Filtering
+  //filtering
   if (query.specialization) {
     andConditions.push({
       specialization: { equals: query.specialization, mode: "insensitive" },
@@ -360,21 +353,14 @@ const getAllDoctors = async (query: IQuery) => {
       licenseNumber: { equals: query.licenseNumber, mode: "insensitive" },
     });
   }
+
   if (query.verificationStatus) {
     andConditions.push({
       verificationStatus: query.verificationStatus as DoctorVerificationStatus,
     });
   }
 
-  if (query.isDeleted) {
-    andConditions.push({
-      isDeleted: query.isDeleted === "true" ? true : false,
-    });
-  }
-
-  andConditions.push({
-    isDeleted: false,
-  });
+  andConditions.push({ isDeleted: false });
 
   const allDoctors = await prisma.doctor.findMany({
     where: {
@@ -385,6 +371,7 @@ const getAllDoctors = async (query: IQuery) => {
     skip: skip,
 
     orderBy: {
+      // sortBy : sortOrder
       [sortBy]: sortOrder,
     },
 
@@ -396,8 +383,8 @@ const getAllDoctors = async (query: IQuery) => {
       },
 
       // schedules: true,
-      //appointments: true,
-      // prescriptions: true,
+      // appointments: true
+      // prescriptions: true
     },
   });
 
@@ -416,14 +403,242 @@ const getAllDoctors = async (query: IQuery) => {
       totalPages: Math.ceil(totalDoctorCount / limit),
     },
   };
+};
 
+const updateDoctorProfile = async (
+  payload: IUpdateDoctorProfilePayload,
+  user: RequestUser,
+) => {
+  const existingDoctor = await prisma.doctor.findUnique({
+    where: { userId: user.userId },
+  });
 
-  
+  if (!existingDoctor) {
+    throw new AppError(httpStatus.NOT_FOUND, "Doctor Profile Not Found");
+  }
+
+  const updatedDoctor = await prisma.doctor.update({
+    where: { id: existingDoctor.id },
+    data: payload,
+  });
+
+  return updatedDoctor;
+};
+
+// Fields safe to expose on the public (unauthenticated) doctor-discovery endpoints.
+// Deliberately excludes resume/additionalFiles, verification review metadata, and
+// anything relation/auth related (user, userId, isDeleted, deletedAt...).
+
+const getAvailableDoctorByTodaysSchedule = async (query: IQuery) => {
+  const limit = query.limit ? Number(query.limit) : 10;
+  const page = query.page ? Number(query.page) : 1;
+  const skip = (page - 1) * limit;
+  const sortBy = query.sortBy ? query.sortBy : "createdAt";
+  const sortOrder = query.sortOrder ? query.sortOrder : "desc";
+
+  const now = new Date();
+  const startOfToday = startOfDay(now);
+  const startOfTomorrow = addDays(startOfToday, 1);
+
+  // A doctor is "available today" if they have at least one published,
+  // not-yet-started schedule today with open slots left.
+
+  const andConditions: DoctorWhereInput[] = [
+    { isDeleted: false },
+    { verificationStatus: DoctorVerificationStatus.APPROVED },
+    {
+      schedules: {
+        some: {
+          isDeleted: false,
+          status: ScheduleStatus.PUBLISHED,
+          availableSlots: { gt: 0 },
+          startDateTime: {
+            gte: startOfToday,
+            lt: startOfTomorrow,
+            gt: now,
+          },
+        },
+      },
+    },
+  ];
+
+  if (query.searchTerm) {
+    andConditions.push({
+      OR: [
+        { name: { contains: query.searchTerm, mode: "insensitive" } },
+        { specialization: { contains: query.searchTerm, mode: "insensitive" } },
+      ],
+    });
+  }
+
+  if (query.specialization) {
+    andConditions.push({
+      specialization: { equals: query.specialization, mode: "insensitive" },
+    });
+  }
+
+  const availableDoctors = await prisma.doctor.findMany({
+    where: {
+      AND: andConditions,
+    },
+
+    take: limit,
+    skip,
+
+    orderBy: {
+      [sortBy]: sortOrder,
+    },
+
+    select: {
+      id: true,
+      name: true,
+      specialization: true,
+      licenseNumber: true,
+      qualifications: true,
+      experienceYears: true,
+      bio: true,
+      consultationFee: true,
+      createdAt: true,
+      schedules: {
+        where: {
+          isDeleted: false,
+          status: ScheduleStatus.PUBLISHED,
+          availableSlots: { gt: 0 },
+          startDateTime: {
+            gte: startOfToday,
+            lt: startOfTomorrow,
+            gt: now,
+          },
+        },
+        orderBy: { [sortBy]: sortOrder },
+        select: {
+          id: true,
+          startDateTime: true,
+          endDateTime: true,
+          availableSlots: true,
+          totalSlots: true,
+        },
+      },
+    },
+  });
+
+  const totalAvailableDoctorCount = await prisma.doctor.count({
+    where: { AND: andConditions },
+  });
+
+  return {
+    data: availableDoctors,
+    meta: {
+      page,
+      limit,
+      total: totalAvailableDoctorCount,
+      totalPages: Math.ceil(totalAvailableDoctorCount / limit),
+    },
+  };
+};
+
+const getAllDoctorsListPublic = async (query: IQuery) => {
+  const limit = query.limit ? Number(query.limit) : 10;
+  const page = query.page ? Number(query.page) : 1;
+  const skip = (page - 1) * limit;
+  const sortBy = query.sortBy ? query.sortBy : "createdAt";
+  const sortOrder = query.sortOrder ? query.sortOrder : "desc";
+
+  const andConditions: DoctorWhereInput[] = [
+    { isDeleted: false },
+    { verificationStatus: DoctorVerificationStatus.APPROVED },
+  ];
+
+  if (query.searchTerm) {
+    andConditions.push({
+      OR: [
+        { name: { contains: query.searchTerm, mode: "insensitive" } },
+        { specialization: { contains: query.searchTerm, mode: "insensitive" } },
+        { qualifications: { contains: query.searchTerm, mode: "insensitive" } },
+      ],
+    });
+  }
+
+  if (query.specialization) {
+    andConditions.push({
+      specialization: { equals: query.specialization, mode: "insensitive" },
+    });
+  }
+
+  const allDoctors = await prisma.doctor.findMany({
+    where: {
+      AND: andConditions,
+    },
+
+    take: limit,
+    skip,
+
+    orderBy: {
+      [sortBy]: sortOrder,
+    },
+
+    select: {
+      id: true,
+      name: true,
+      specialization: true,
+      licenseNumber: true,
+      qualifications: true,
+      experienceYears: true,
+      bio: true,
+      consultationFee: true,
+      createdAt: true,
+    },
+  });
+
+  const totalDoctorCount = await prisma.doctor.count({
+    where: { AND: andConditions },
+  });
+
+  return {
+    data: allDoctors,
+    meta: {
+      page,
+      limit,
+      total: totalDoctorCount,
+      totalPages: Math.ceil(totalDoctorCount / limit),
+    },
+  };
+};
+
+const getSingleDoctorPublicProfile = async (doctorId: string) => {
+  const doctor = await prisma.doctor.findUnique({
+    where: {
+      id: doctorId,
+      isDeleted: false,
+      verificationStatus: DoctorVerificationStatus.APPROVED,
+    },
+    select: {
+      id: true,
+      name: true,
+      specialization: true,
+      licenseNumber: true,
+      qualifications: true,
+      experienceYears: true,
+      bio: true,
+      consultationFee: true,
+      createdAt: true,
+    },
+  });
+
+  if (!doctor) {
+    throw new AppError(httpStatus.NOT_FOUND, "Doctor Not Found");
+  }
+
+  return doctor;
 };
 
 export const DoctorServices = {
   applyAsDoctor,
-  approveDoctor,
   verifyDoctorEmail,
+  approveDoctor,
   getAllDoctors,
+  updateDoctorProfile,
+  getAvailableDoctorByTodaysSchedule,
+  getAllDoctorsListPublic,
+  getSingleDoctorPublicProfile,
 };

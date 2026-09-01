@@ -1,4 +1,3 @@
-import { ApppointmentWhereInput } from "./../../../generated/prisma/models/Apppointment";
 import httpStatus from "http-status";
 import {
   AppointmentStatus,

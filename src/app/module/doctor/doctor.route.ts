@@ -1,8 +1,11 @@
 import { Router } from "express";
-import { upload } from "../../lib/multer";
-import { DoctorController } from "./doctor.controller";
-import { auth } from "../../middleware/checkAuth";
 import { Role } from "../../../generated/prisma/enums";
+import { upload } from "../../lib/multer";
+import { auth } from "../../middleware/checkAuth";
+
+import { DoctorController } from "./doctor.controller";
+import { UpdateDoctorProfileValidationZodSchema } from "./doctor.validation";
+import { validatedRequest } from "../../middleware/validateRequest";
 
 const router = Router();
 
@@ -22,22 +25,36 @@ router.post(
   ]),
   DoctorController.applyAsDoctor,
 );
-
 router.post(
   "/apply-as-doctor/verify-email",
-
   DoctorController.verifyDoctorEmail,
 );
 router.post(
   "/approve-doctor",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
-
   DoctorController.approveDoctor,
 );
 router.get(
-  "/all-doctor",
+  "/all-doctors",
   auth(Role.ADMIN, Role.SUPER_ADMIN),
-
-  DoctorController.getAllDoctor,
+  DoctorController.getAllDoctors,
 );
+
+router.patch(
+  "/update-my-profile",
+  auth(Role.DOCTOR),
+  validatedRequest(UpdateDoctorProfileValidationZodSchema),
+  DoctorController.updateDoctorProfile,
+);
+
+// Public doctor-discovery routes (no auth) — meant for patients browsing before login.
+router.get(
+  "/public/available-today",
+  DoctorController.getAvailableDoctorByTodaysSchedule,
+);
+
+router.get("/public/all-doctors", DoctorController.getAllDoctorsListPublic);
+
+router.get("/public/:doctorId", DoctorController.getSingleDoctorPublicProfile);
+
 export const DoctorRoutes = router;
