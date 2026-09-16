@@ -9,68 +9,19 @@ const router = Router();
 
 router.post(
   "/register",
-  // (req : Request, res : Response, next : NextFunction) => {
-
-  // 	try {
-  // 		// const payload = req.body ? req.body : {}
-  // 		const payload = req.body ?? {}
-
-  // 		const result = PatientValidation.PatientRegistrationZodSchema.safeParse(payload);
-
-  // 		if (!result.success) {
-  // 			console.log(result.error);
-  // 			console.log(result.error.issues);
-
-  // 			throw new Error(result.error.issues[0].message)
-  // 		}
-
-  // 		req.body = result.data
-
-  // 		next()
-  // 	} catch (error) {
-
-  // 		next(error)
-  // 	}
-  // },
-
   validatedRequest(UserValidation.PatientRegistrationZodSchema),
   AuthController.registerPatient,
 );
 router.post(
   "/verify-email",
-
-  // 	try {
-  // 		// const payload = req.body ? req.body : {}
-  // 		const payload = req.body ?? {}
-
-  // 		const result = PatientValidation.PatientRegistrationZodSchema.safeParse(payload);
-
-  // 		if (!result.success) {
-  // 			console.log(result.error);
-  // 			console.log(result.error.issues);
-
-  // 			throw new Error(result.error.issues[0].message)
-  // 		}
-
-  // 		req.body = result.data
-
-  // 		next()
-  // 	} catch (error) {
-
-  // 		next(error)
-  // 	}
-  // },
-
   validatedRequest(UserValidation.PatientEmailVerifyZodSchema),
   AuthController.verifyPatientEmail,
 );
-
 router.post(
   "/resend-otp",
   validatedRequest(UserValidation.ResendOtpZodSchema),
   AuthController.resendOtp,
 );
-
 router.post(
   "/login",
   validatedRequest(UserValidation.LoginZodSchema),
@@ -79,7 +30,6 @@ router.post(
 router.get(
   "/me",
   auth(Role.ADMIN, Role.DOCTOR, Role.PATIENT, Role.SUPER_ADMIN),
-  // validateRequest
   AuthController.getMe,
 );
 router.post("/refresh-token", AuthController.refreshToken);

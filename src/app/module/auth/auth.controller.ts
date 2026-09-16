@@ -7,35 +7,9 @@ import { AuthService } from "./auth.service";
 import config from "../../config";
 
 const registerPatient = catchAsync(async (req: Request, res: Response) => {
-  // const payload = PatientValidation.PatientRegistrationZodSchema.safeParse(req.body);
-
-  // if(!payload.success){
-  // 	console.log(payload.error);
-  // 	console.log(payload.error.issues);
-
-  // 	throw new Error(payload.error.issues[0].message)
-  // }
-
-  // console.log(payload);
-
   const payload = req.body;
 
   await AuthService.registerPatient(payload);
-
-  // const { accessToken, refreshToken, user, patient } = result;
-
-  // res.cookie("accessToken", accessToken, {
-  //   httpOnly: true,
-  //   secure: false,
-  //   sameSite: "none",
-  //   maxAge: 1000 * 60 * 60 * 24,
-  // });
-  // res.cookie("refreshToken", refreshToken, {
-  //   httpOnly: true,
-  //   secure: false,
-  //   sameSite: "none",
-  //   maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-  // });
 
   sendResponse(res, {
     statusCode: httpStatus.CREATED,

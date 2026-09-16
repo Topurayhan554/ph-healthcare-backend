@@ -1,4 +1,3 @@
-/** biome-ignore-all lint/style/useConst: <explanation> */
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import ejs from "ejs";
@@ -100,8 +99,6 @@ const registerPatient = async (payload: IRegisterPatientPayload) => {
     from: config.email_sender,
     to: email,
     subject: "Email Verification",
-    // text : `Your OTP is ${otp}`
-    // html: `<h1>Your OTP is ${otp}</h1>`
     html,
   });
 };
@@ -187,8 +184,6 @@ const verifyPatientEmail = async (payload: IVerifyEmailPayload) => {
     from: config.email_sender,
     to: email,
     subject: "Welcome To PH Healthcare System",
-    // text : `Your OTP is ${otp}`
-    // html: `<h1>Your OTP is ${otp}</h1>`
     html,
   });
 
@@ -267,7 +262,6 @@ const resendOtp = async (payload: IResendOtpPayload) => {
     },
   });
 
-  // Registration data expire hoye jete pare, tai eta o refresh kore dilam
   await redisClient.set(
     patientRegistrationKey,
     JSON.stringify(patientPayload),
@@ -302,8 +296,6 @@ const resendOtp = async (payload: IResendOtpPayload) => {
 };
 
 const loginUser = async (payload: ILoginUserPayload) => {
-  // throw new Error("Test Error");
-
   const { password } = payload;
   const email = payload.email.trim().toLowerCase();
 
@@ -312,7 +304,6 @@ const loginUser = async (payload: ILoginUserPayload) => {
   });
 
   if (!user) {
-    // throw new Error("User not found");
     throw new AppError(httpStatus.NOT_FOUND, "User Not Found");
   }
 
@@ -517,7 +508,6 @@ const googleLogin = async (payload: IGoogleLoginPayload) => {
         },
       });
     } else {
-      // Google Register
       user = await prisma.user.create({
         data: {
           name: googleIdTokenPayload.name,
@@ -549,8 +539,6 @@ const googleLogin = async (payload: IGoogleLoginPayload) => {
         from: config.email_sender,
         to: user.email,
         subject: "Welcome To PH Healthcare System",
-        // text : `Your OTP is ${otp}`
-        // html: `<h1>Your OTP is ${otp}</h1>`
         html,
       });
     }
@@ -652,8 +640,6 @@ const forgotPassword = async (payload: IForgotPasswordPayload) => {
     from: config.email_sender,
     to: isUserExist.email,
     subject: "Forgot Password",
-    // text : `Your OTP is ${otp}`
-    // html: `<h1>Your OTP is ${otp}</h1>`
     html,
   });
 };
@@ -730,8 +716,6 @@ const resetPassword = async (payload: IResetPasswordPayload) => {
     from: config.email_sender,
     to: isUserExist.email,
     subject: "Password Changed",
-    // text : `Your OTP is ${otp}`
-    // html: `<h1>Your Password Is Changed</h1>`
     html,
   });
 };

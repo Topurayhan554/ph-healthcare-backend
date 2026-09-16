@@ -18,6 +18,10 @@ export interface IVerifyEmailPayload {
   otp: string;
 }
 
+export interface IResendOtpPayload {
+  email: string;
+}
+
 export interface IRequestUser {
   userId: string;
   email: string;
@@ -36,8 +40,4 @@ export interface IResetPasswordPayload {
   email: string;
   newPassword: string;
   otp: string;
-}
-
-export interface IResendOtpPayload {
-  email: string;
 }
