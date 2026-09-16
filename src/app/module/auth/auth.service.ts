@@ -24,6 +24,7 @@ import type {
   ILoginUserPayload,
   IRegisterPatientPayload,
   IRequestUser,
+  IResendOtpPayload,
   IResetPasswordPayload,
   IVerifyEmailPayload,
 } from "./auth.interface";
@@ -50,6 +51,10 @@ const registerPatient = async (payload: IRegisterPatientPayload) => {
 
   const otpKey = `patient-registration-otp:${email}`;
   const otpValue = crypto.randomInt(100000, 1000000).toString();
+
+  if (config.node_env === "development") {
+    console.log(`[dev] OTP ${email}: ${otpValue}`);
+  }
 
   await redisClient.set(otpKey, otpValue, {
     expiration: {
@@ -213,6 +218,87 @@ const verifyPatientEmail = async (payload: IVerifyEmailPayload) => {
     accessToken,
     refreshToken,
   };
+};
+
+const resendOtp = async (payload: IResendOtpPayload) => {
+  const email = payload.email.trim().toLowerCase();
+
+  const isUserExist = await prisma.user.findUnique({
+    where: { email },
+  });
+
+  if (isUserExist?.status === "BLOCKED") {
+    throw new AppError(httpStatus.FORBIDDEN, "User is Blocked");
+  }
+
+  if (isUserExist?.emailVerified) {
+    throw new AppError(httpStatus.CONFLICT, "Email ALready Verified");
+  }
+
+  if (isUserExist?.isDeleted || isUserExist?.status === "DELETED") {
+    throw new AppError(httpStatus.FORBIDDEN, "User is Deleted");
+  }
+
+  const patientRegistrationKey = `patient-registration-data:${email}`;
+  const redisPatientData = await redisClient.get(patientRegistrationKey);
+
+  if (!redisPatientData) {
+    throw new AppError(
+      httpStatus.NOT_FOUND,
+      "Registration Session Expired. Please Register Again.",
+    );
+  }
+
+  const patientPayload: IRegisterPatientPayload = JSON.parse(redisPatientData);
+
+  const expirationSeconds = 5 * 60;
+
+  const otpKey = `patient-registration-otp:${email}`;
+  const otpValue = crypto.randomInt(100000, 1000000).toString();
+
+  if (config.node_env === "development") {
+    console.log(`[dev] OTP ${email}: ${otpValue}`);
+  }
+
+  await redisClient.set(otpKey, otpValue, {
+    expiration: {
+      type: "EX",
+      value: expirationSeconds,
+    },
+  });
+
+  // Registration data expire hoye jete pare, tai eta o refresh kore dilam
+  await redisClient.set(
+    patientRegistrationKey,
+    JSON.stringify(patientPayload),
+    {
+      expiration: {
+        type: "EX",
+        value: expirationSeconds,
+      },
+    },
+  );
+
+  const tempatePath = path.join(
+    process.cwd(),
+    "src/app/templates/registration-user-otp.ejs",
+  );
+
+  const templateData = {
+    name: patientPayload.name,
+    email,
+    otp: otpValue,
+    expirationMinutes: expirationSeconds / 60,
+  };
+
+  const html = await ejs.renderFile(tempatePath, templateData);
+
+  await transporter.sendMail({
+    from: config.email_sender,
+    to: email,
+    subject: "Email Verification - OTP Resend",
+    html,
+  });
 };
 
 const loginUser = async (payload: ILoginUserPayload) => {
@@ -653,6 +739,7 @@ const resetPassword = async (payload: IResetPasswordPayload) => {
 export const AuthService = {
   registerPatient,
   verifyPatientEmail,
+  resendOtp,
   loginUser,
   getMe,
   refreshToken,

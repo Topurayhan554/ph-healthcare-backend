@@ -80,6 +80,19 @@ const verifyPatientEmail = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const resendOtp = catchAsync(async (req: Request, res: Response) => {
+  const payload = req.body;
+
+  await AuthService.resendOtp(payload);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "OTP Resent Successfully",
+    data: null,
+  });
+});
+
 const loginUser = catchAsync(async (req: Request, res: Response) => {
   const payload = req.body;
   const result = await AuthService.loginUser(payload);
@@ -230,6 +243,7 @@ const logOut = catchAsync(async (req: Request, res: Response) => {
 export const AuthController = {
   registerPatient,
   verifyPatientEmail,
+  resendOtp,
   loginUser,
   getMe,
   refreshToken,

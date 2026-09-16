@@ -64,6 +64,13 @@ router.post(
   validatedRequest(UserValidation.PatientEmailVerifyZodSchema),
   AuthController.verifyPatientEmail,
 );
+
+router.post(
+  "/resend-otp",
+  validatedRequest(UserValidation.ResendOtpZodSchema),
+  AuthController.resendOtp,
+);
+
 router.post(
   "/login",
   validatedRequest(UserValidation.LoginZodSchema),
