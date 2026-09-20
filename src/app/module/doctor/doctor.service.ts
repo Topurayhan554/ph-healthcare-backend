@@ -22,6 +22,7 @@ import { AppError } from "../../utils/AppError";
 import {
   IApplyAsDoctorPayload,
   IApproveDoctorPayload,
+  IResendDoctorOtpPayload,
   IUpdateDoctorProfilePayload,
   IVerifyDoctorEmailPayload,
 } from "./doctor.interface";
@@ -216,6 +217,70 @@ const verifyDoctorEmail = async (payload: IVerifyDoctorEmailPayload) => {
   });
 
   return verifiedUser;
+};
+
+const resendDoctorOtp = async (payload: IResendDoctorOtpPayload) => {
+  const email = payload.email.trim().toLowerCase();
+
+  const existingUser = await prisma.user.findUnique({
+    where: { email, role: Role.DOCTOR },
+  });
+
+  if (!existingUser) {
+    throw new AppError(
+      httpStatus.NOT_FOUND,
+      "Doctor Application Not Found. Please Apply Again.",
+    );
+  }
+
+  if (existingUser.status === "BLOCKED") {
+    throw new AppError(httpStatus.FORBIDDEN, "User is Blocked");
+  }
+
+  if (existingUser.emailVerified) {
+    throw new AppError(httpStatus.CONFLICT, "Email Already Verified");
+  }
+
+  if (existingUser.isDeleted || existingUser.status === "DELETED") {
+    throw new AppError(httpStatus.FORBIDDEN, "User is Deleted");
+  }
+
+  const expirationSeconds = 60 * 60;
+
+  const otpKey = `doctor-application-otp:${email}`;
+  const otpValue = crypto.randomInt(100000, 1000000).toString();
+
+  if (config.node_env === "development") {
+    console.log(`[dev] Doctor OTP ${email}: ${otpValue}`);
+  }
+
+  await redisClient.set(otpKey, otpValue, {
+    expiration: {
+      type: "EX",
+      value: expirationSeconds,
+    },
+  });
+
+  const tempatePath = path.join(
+    process.cwd(),
+    "src/app/templates/registration-user-otp.ejs",
+  );
+
+  const templateData = {
+    name: existingUser.name,
+    email,
+    otp: otpValue,
+    expirationMinutes: expirationSeconds / 60,
+  };
+
+  const html = await ejs.renderFile(tempatePath, templateData);
+
+  await transporter.sendMail({
+    from: config.email_sender,
+    to: email,
+    subject: "Doctor Application - OTP Resend",
+    html,
+  });
 };
 
 const approveDoctor = async (
@@ -631,10 +696,10 @@ const getSingleDoctorPublicProfile = async (doctorId: string) => {
 
   return doctor;
 };
-
 export const DoctorServices = {
   applyAsDoctor,
   verifyDoctorEmail,
+  resendDoctorOtp,
   approveDoctor,
   getAllDoctors,
   updateDoctorProfile,

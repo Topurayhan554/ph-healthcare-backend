@@ -4,7 +4,10 @@ import { upload } from "../../lib/multer";
 import { auth } from "../../middleware/checkAuth";
 
 import { DoctorController } from "./doctor.controller";
-import { UpdateDoctorProfileValidationZodSchema } from "./doctor.validation";
+import {
+  ResendDoctorOtpZodSchema,
+  UpdateDoctorProfileValidationZodSchema,
+} from "./doctor.validation";
 import { validatedRequest } from "../../middleware/validateRequest";
 
 const router = Router();
@@ -28,6 +31,11 @@ router.post(
 router.post(
   "/apply-as-doctor/verify-email",
   DoctorController.verifyDoctorEmail,
+);
+router.post(
+  "/apply-as-doctor/resend-otp",
+  validatedRequest(ResendDoctorOtpZodSchema),
+  DoctorController.resendDoctorOtp,
 );
 router.post(
   "/approve-doctor",

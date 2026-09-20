@@ -22,6 +22,9 @@ export interface IVerifyDoctorEmailPayload {
   otp: string;
 }
 
+export interface IResendDoctorOtpPayload {
+  email: string;
+}
 export interface IApproveDoctorPayload {
   doctorId: string;
   verificationStatus: DoctorVerificationStatus;

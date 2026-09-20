@@ -20,7 +20,6 @@ export const ApplyAsDoctorValidationZodSchema = z.object({
 
     qualifications: z.string().trim().min(2, "Qualifications are required"),
 
-    // Handles converting incoming FormData strings like "12" into an integer number
     experienceYears: z
       .number()
       .int("Experience years must be an integer")
@@ -32,7 +31,6 @@ export const ApplyAsDoctorValidationZodSchema = z.object({
       .max(1000, "Bio cannot exceed 1000 characters")
       .optional(),
 
-    // Handles converting incoming FormData strings like "150.00" into a float number
     consultationFee: z
       .number()
       .min(0, "Consultation fee cannot be negative")
@@ -43,6 +41,10 @@ export const ApplyAsDoctorValidationZodSchema = z.object({
       .min(5, "Contact number is invalid")
       .optional(),
   }),
+});
+
+export const ResendDoctorOtpZodSchema = z.object({
+  email: z.email("Invalid email address").trim().toLowerCase(),
 });
 
 export const UpdateDoctorProfileValidationZodSchema = z.object({
