@@ -19,6 +19,7 @@ import { prisma } from "../../lib/prisma";
 import { redisClient } from "../../lib/redis";
 import { RequestUser } from "../../middleware/checkAuth";
 import { AppError } from "../../utils/AppError";
+import generateRandomPassword from "../../utils/randomPassword";
 import {
   IApplyAsDoctorPayload,
   IApproveDoctorPayload,
@@ -104,17 +105,9 @@ const applyAsDoctor = async (
 
   console.log({ additionalFilesUploadResults });
 
-  const randomDoctorPassword = Math.random().toString(36).slice(-8);
-
-  const hashedPassword = await bcrypt.hash(
-    randomDoctorPassword,
-    Number(config.bcrypt_salt_rounds),
-  );
-
   const doctorApplication = await prisma.user.create({
     data: {
       ...payload.user,
-      password: hashedPassword,
       role: Role.DOCTOR,
       needPasswordChange: true,
       doctor: {
@@ -141,6 +134,11 @@ const applyAsDoctor = async (
 
   const otpKey = `doctor-application-otp:${payload.user.email}`;
   const otpValue = crypto.randomInt(100000, 1000000).toString();
+
+  if (config.node_env === "development")
+    console.log(
+      `[dev] Doctor application OTP for ${payload.user.email}: ${otpValue}`,
+    );
 
   await redisClient.set(otpKey, otpValue, {
     expiration: {
@@ -326,6 +324,20 @@ const approveDoctor = async (
     );
   }
 
+  const isApproved = verificationStatus === DoctorVerificationStatus.APPROVED;
+
+  const randomDoctorPassword = isApproved
+    ? generateRandomPassword()
+    : undefined;
+
+  if (config.node_env === "development" && randomDoctorPassword) {
+    console.log(`[dev] Random Password plain text: ${randomDoctorPassword}`);
+  }
+
+  const hashedPassword = randomDoctorPassword
+    ? await bcrypt.hash(randomDoctorPassword, Number(config.bcrypt_salt_rounds))
+    : undefined;
+
   const updatedDoctor = await prisma.doctor.update({
     where: { id: doctorId },
     data: {
@@ -336,10 +348,11 @@ const approveDoctor = async (
           : null,
       reviewedBy: reviewer.userId,
       reviewedAt: new Date(),
+      ...(hashedPassword
+        ? { user: { update: { password: hashedPassword } } }
+        : {}),
     },
   });
-
-  const isApproved = verificationStatus === DoctorVerificationStatus.APPROVED;
 
   const tempatePath = path.join(
     process.cwd(),
@@ -353,6 +366,7 @@ const approveDoctor = async (
   const templateData = {
     name: updatedDoctor.name,
     reason: updatedDoctor.rejectionReason,
+    password: isApproved ? randomDoctorPassword : undefined,
   };
 
   const html = await ejs.renderFile(tempatePath, templateData);
@@ -447,9 +461,6 @@ const getAllDoctors = async (query: IQuery) => {
         },
       },
 
-      // schedules: true,
-      // appointments: true
-      // prescriptions: true
     },
   });
 
@@ -490,9 +501,6 @@ const updateDoctorProfile = async (
   return updatedDoctor;
 };
 
-// Fields safe to expose on the public (unauthenticated) doctor-discovery endpoints.
-// Deliberately excludes resume/additionalFiles, verification review metadata, and
-// anything relation/auth related (user, userId, isDeleted, deletedAt...).
 
 const getAvailableDoctorByTodaysSchedule = async (query: IQuery) => {
   const limit = query.limit ? Number(query.limit) : 10;
@@ -504,9 +512,6 @@ const getAvailableDoctorByTodaysSchedule = async (query: IQuery) => {
   const now = new Date();
   const startOfToday = startOfDay(now);
   const startOfTomorrow = addDays(startOfToday, 1);
-
-  // A doctor is "available today" if they have at least one published,
-  // not-yet-started schedule today with open slots left.
 
   const andConditions: DoctorWhereInput[] = [
     { isDeleted: false },
@@ -696,6 +701,7 @@ const getSingleDoctorPublicProfile = async (doctorId: string) => {
 
   return doctor;
 };
+
 export const DoctorServices = {
   applyAsDoctor,
   verifyDoctorEmail,
