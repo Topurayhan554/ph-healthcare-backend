@@ -460,7 +460,6 @@ const getAllDoctors = async (query: IQuery) => {
           password: true,
         },
       },
-
     },
   });
 
@@ -501,7 +500,6 @@ const updateDoctorProfile = async (
   return updatedDoctor;
 };
 
-
 const getAvailableDoctorByTodaysSchedule = async (query: IQuery) => {
   const limit = query.limit ? Number(query.limit) : 10;
   const page = query.page ? Number(query.page) : 1;
@@ -525,8 +523,8 @@ const getAvailableDoctorByTodaysSchedule = async (query: IQuery) => {
           startDateTime: {
             gte: startOfToday,
             lt: startOfTomorrow,
-            gt: now,
           },
+          endDateTime: { gt: now },
         },
       },
     },
@@ -577,10 +575,10 @@ const getAvailableDoctorByTodaysSchedule = async (query: IQuery) => {
           startDateTime: {
             gte: startOfToday,
             lt: startOfTomorrow,
-            gt: now,
           },
+          endDateTime: { gt: now },
         },
-        orderBy: { [sortBy]: sortOrder },
+        orderBy: { startDateTime: "asc" },
         select: {
           id: true,
           startDateTime: true,
