@@ -53,7 +53,7 @@ app.get("/test", async (req: Request, res: Response, next: NextFunction) => {
 
     res.status(httpStatus.OK).json({
       success: true,
-      message: "Welcome to PH Healthcare System Backend",
+      message: "Welcome to Medisync System Backend",
       data: null,
     });
   } catch (error) {
@@ -66,7 +66,7 @@ app.get("/test", async (req: Request, res: Response, next: NextFunction) => {
 app.get("/", async (req: Request, res: Response) => {
   res.status(httpStatus.OK).json({
     success: true,
-    message: "Welcome to PH Healthcare System Backend",
+    message: "Welcome to Medisync System Backend",
   });
 });
 
