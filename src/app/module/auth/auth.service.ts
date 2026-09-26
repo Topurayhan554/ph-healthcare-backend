@@ -463,85 +463,81 @@ const googleLogin = async (payload: IGoogleLoginPayload) => {
     );
   }
 
-  const ifPatientExistWithGoogleAuth = await prisma.user.findUnique({
-    where: {
-      email: googleIdTokenPayload.email,
-      role: Role.PATIENT,
-      googleId: googleIdTokenPayload.sub,
-    },
+  const existingUserByEmail = await prisma.user.findUnique({
+    where: { email: googleIdTokenPayload.email },
   });
 
-  let user = ifPatientExistWithGoogleAuth;
+  let user;
 
-  if (!ifPatientExistWithGoogleAuth) {
-    const ifPatientExistWithCredentials = await prisma.user.findUnique({
-      where: {
+  if (existingUserByEmail) {
+    if (existingUserByEmail.role !== Role.PATIENT) {
+      throw new AppError(
+        httpStatus.FORBIDDEN,
+        "This email is already registered with a different role.",
+      );
+    }
+
+    if (existingUserByEmail.status === UserStatus.BLOCKED) {
+      throw new AppError(httpStatus.FORBIDDEN, "User Is Blocked");
+    }
+
+    if (
+      existingUserByEmail.isDeleted ||
+      existingUserByEmail.status === UserStatus.DELETED
+    ) {
+      throw new AppError(httpStatus.FORBIDDEN, "User Is Deleted");
+    }
+
+    if (
+      existingUserByEmail.authProvider === AuthProvider.CREDENTIAL &&
+      !existingUserByEmail.emailVerified
+    ) {
+      throw new AppError(httpStatus.FORBIDDEN, "Email Not Verified");
+    }
+
+    if (!existingUserByEmail.googleId) {
+      user = await prisma.user.update({
+        where: { id: existingUserByEmail.id },
+        data: { googleId: googleIdTokenPayload.sub },
+      });
+    } else {
+      user = existingUserByEmail;
+    }
+  } else {
+    user = await prisma.user.create({
+      data: {
+        name: googleIdTokenPayload.name,
         email: googleIdTokenPayload.email,
         role: Role.PATIENT,
-        authProvider: AuthProvider.CREDENTIAL,
+        googleId: googleIdTokenPayload.sub,
+        authProvider: AuthProvider.GOOGLE,
+        emailVerified: true,
+        patient: {
+          create: {
+            name: googleIdTokenPayload.name,
+            email: googleIdTokenPayload.email,
+          },
+        },
       },
     });
 
-    if (ifPatientExistWithCredentials) {
-      if (!ifPatientExistWithCredentials.emailVerified) {
-        throw new AppError(httpStatus.FORBIDDEN, "Email Not Verified");
-      }
+    const tempatePath = path.join(
+      process.cwd(),
+      "src/app/templates/patient-welcome-email.ejs",
+    );
 
-      if (ifPatientExistWithCredentials.status === UserStatus.BLOCKED) {
-        throw new AppError(httpStatus.FORBIDDEN, "User Is Blocked");
-      }
+    const templateData = {
+      name: user.name,
+    };
 
-      if (
-        ifPatientExistWithCredentials.isDeleted ||
-        ifPatientExistWithCredentials.status === UserStatus.DELETED
-      ) {
-        throw new AppError(httpStatus.FORBIDDEN, "User Is Deleted");
-      }
+    const html = await ejs.renderFile(tempatePath, templateData);
 
-      user = await prisma.user.update({
-        where: {
-          id: ifPatientExistWithCredentials.id,
-        },
-
-        data: {
-          googleId: googleIdTokenPayload.sub,
-        },
-      });
-    } else {
-      user = await prisma.user.create({
-        data: {
-          name: googleIdTokenPayload.name,
-          email: googleIdTokenPayload.email,
-          role: Role.PATIENT,
-          googleId: googleIdTokenPayload.sub,
-          authProvider: AuthProvider.GOOGLE,
-          emailVerified: true,
-          patient: {
-            create: {
-              name: googleIdTokenPayload.name,
-              email: googleIdTokenPayload.email,
-            },
-          },
-        },
-      });
-      const tempatePath = path.join(
-        process.cwd(),
-        "src/app/templates/patient-welcome-email.ejs",
-      );
-
-      const templateData = {
-        name: user.name,
-      };
-
-      const html = await ejs.renderFile(tempatePath, templateData);
-
-      await transporter.sendMail({
-        from: config.email_sender,
-        to: user.email,
-        subject: "Welcome To PH Healthcare System",
-        html,
-      });
-    }
+    await transporter.sendMail({
+      from: config.email_sender,
+      to: user.email,
+      subject: "Welcome To PH Healthcare System",
+      html,
+    });
   }
 
   if (!user) {
