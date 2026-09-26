@@ -4,148 +4,233 @@ import { catchAsync } from "../../utils/catchAsync";
 import { sendResponse } from "../../utils/sendResponse";
 import type { IRequestUser } from "./auth.interface";
 import { AuthService } from "./auth.service";
+import config from "../../config";
 
 const registerPatient = catchAsync(async (req: Request, res: Response) => {
-	const payload = req.body;
-	const result = await AuthService.registerPatient(payload);
+  const payload = req.body;
 
-	const { accessToken, refreshToken, user, patient } = result;
+  await AuthService.registerPatient(payload);
 
-	res.cookie("accessToken", accessToken, {
-		httpOnly: true,
-		secure: false,
-		sameSite: "none",
-		maxAge: 1000 * 60 * 60 * 24, // 24 hour or 1 day
-	});
-	res.cookie("refreshToken", refreshToken, {
-		httpOnly: true,
-		secure: false,
-		sameSite: "none",
-		maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-	});
+  sendResponse(res, {
+    statusCode: httpStatus.CREATED,
+    success: true,
+    message: "Verification OTP Sent",
+    data: null,
+  });
+});
 
-	sendResponse(res, {
-		statusCode: httpStatus.CREATED,
-		success: true,
-		message: "Patient registered successfully",
-		data: {
-			accessToken,
-			refreshToken,
-			user,
-			patient,
-		},
-	});
+const verifyPatientEmail = catchAsync(async (req: Request, res: Response) => {
+  const payload = req.body;
+
+  const result = await AuthService.verifyPatientEmail(payload);
+
+  const { accessToken, refreshToken, user, patient } = result;
+
+  res.cookie("accessToken", accessToken, {
+    httpOnly: true,
+
+    secure: config.node_env === "development" ? false : true,
+    sameSite: config.node_env === "development" ? "lax" : "none",
+    maxAge: 1000 * 60 * 60 * 24,
+  });
+  res.cookie("refreshToken", refreshToken, {
+    httpOnly: true,
+
+    secure: config.node_env === "development" ? false : true,
+    sameSite: config.node_env === "development" ? "lax" : "none",
+    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+  });
+
+  sendResponse(res, {
+    statusCode: httpStatus.CREATED,
+    success: true,
+    message: "Email Verified Successfully",
+    data: {
+      accessToken,
+      refreshToken,
+      user,
+      patient,
+    },
+  });
+});
+
+const resendOtp = catchAsync(async (req: Request, res: Response) => {
+  const payload = req.body;
+
+  await AuthService.resendOtp(payload);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "OTP Resent Successfully",
+    data: null,
+  });
 });
 
 const loginUser = catchAsync(async (req: Request, res: Response) => {
-	const payload = req.body;
-	const result = await AuthService.loginUser(payload);
-	const { accessToken, refreshToken } = result;
+  const payload = req.body;
+  const result = await AuthService.loginUser(payload);
+  const { accessToken, refreshToken } = result;
 
-	res.cookie("accessToken", accessToken, {
-		httpOnly: true,
-		secure: false,
-		sameSite: "none",
-		maxAge: 1000 * 60 * 60 * 24, // 24 hour or 1 day
-	});
-	res.cookie("refreshToken", refreshToken, {
-		httpOnly: true,
-		secure: false,
-		sameSite: "none",
-		maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-	});
+  res.cookie("accessToken", accessToken, {
+    httpOnly: true,
+    secure: config.node_env === "development" ? false : true,
+    sameSite: config.node_env === "development" ? "lax" : "none",
+    maxAge: 1000 * 60 * 60 * 24, // 24 hour or 1 day
+  });
+  res.cookie("refreshToken", refreshToken, {
+    httpOnly: true,
 
-	sendResponse(res, {
-		statusCode: httpStatus.OK,
-		success: true,
-		message: "User logged in successfully",
-		data: {
-			accessToken,
-			refreshToken,
-		},
-	});
+    secure: config.node_env === "development" ? false : true,
+    sameSite: config.node_env === "development" ? "lax" : "none",
+    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+  });
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "User logged in successfully",
+    data: {
+      accessToken,
+      refreshToken,
+    },
+  });
 });
 
 const getMe = catchAsync(async (req: Request, res: Response) => {
-	const user = req.user as unknown as IRequestUser;
+  const user = req.user as unknown as IRequestUser;
 
-	if (!user) {
-		throw new Error("User information is missing in the request");
-	}
+  if (!user) {
+    throw new Error("User information is missing in the request");
+  }
 
-	const result = await AuthService.getMe(user);
-	sendResponse(res, {
-		statusCode: httpStatus.OK,
-		success: true,
-		message: "User profile fetched successfully",
-		data: result,
-	});
+  const result = await AuthService.getMe(user);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "User profile fetched successfully",
+    data: result,
+  });
 });
 
 const refreshToken = catchAsync(async (req: Request, res: Response) => {
-	if (!req.cookies.refreshToken) {
-		throw new Error("Refresh token is missing");
-	}
-	const result = await AuthService.refreshToken(req.cookies.refreshToken);
-	const { accessToken, refreshToken: newRefreshToken } = result;
+  if (!req.cookies.refreshToken) {
+    throw new Error("Refresh token is missing");
+  }
+  const result = await AuthService.refreshToken(req.cookies.refreshToken);
+  const { accessToken, refreshToken: newRefreshToken } = result;
 
-	res.cookie("accessToken", accessToken, {
-		httpOnly: true,
-		secure: false,
-		sameSite: "none",
-		maxAge: 1000 * 60 * 60 * 24, // 24 hour or 1 day
-	});
-	res.cookie("refreshToken", newRefreshToken, {
-		httpOnly: true,
-		secure: false,
-		sameSite: "none",
-		maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-	});
+  res.cookie("accessToken", accessToken, {
+    httpOnly: true,
 
-	sendResponse(res, {
-		statusCode: httpStatus.OK,
-		success: true,
-		message: "New tokens generated successfully",
-		data: {
-			accessToken,
-			refreshToken: newRefreshToken,
-		},
-	});
+    secure: config.node_env === "development" ? false : true,
+    sameSite: config.node_env === "development" ? "lax" : "none",
+    maxAge: 1000 * 60 * 60 * 24, // 24 hour or 1 day
+  });
+  res.cookie("refreshToken", newRefreshToken, {
+    httpOnly: true,
+
+    secure: config.node_env === "development" ? false : true,
+    sameSite: config.node_env === "development" ? "lax" : "none",
+    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+  });
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "New tokens generated successfully",
+    data: {
+      accessToken,
+      refreshToken: newRefreshToken,
+    },
+  });
+});
+const googleLogin = catchAsync(async (req: Request, res: Response) => {
+  const payload = req.body;
+
+  const result = await AuthService.googleLogin(payload);
+
+  const { accessToken, refreshToken } = result;
+
+  res.cookie("accessToken", accessToken, {
+    httpOnly: true,
+
+    secure: config.node_env === "development" ? false : true,
+    sameSite: config.node_env === "development" ? "lax" : "none",
+    maxAge: 1000 * 60 * 60 * 24, // 24 hour or 1 day
+  });
+  res.cookie("refreshToken", refreshToken, {
+    httpOnly: true,
+
+    secure: config.node_env === "development" ? false : true,
+    sameSite: config.node_env === "development" ? "lax" : "none",
+    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+  });
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "New tokens generated successfully",
+    data: {
+      accessToken,
+      refreshToken,
+    },
+  });
 });
 
-const googleLogin = catchAsync(async (req: Request, res: Response) => {
-	const payload = req.body;
-	const result = await AuthService.googleLogin(payload);
-	const { accessToken, refreshToken } = result;
+const forgotPassword = catchAsync(async (req: Request, res: Response) => {
+  const payload = req.body;
+  await AuthService.forgotPassword(payload);
 
-	res.cookie("accessToken", accessToken, {
-		httpOnly: true,
-		secure: false,
-		sameSite: "none",
-		maxAge: 1000 * 60 * 60 * 24, // 24 hour or 1 day
-	});
-	res.cookie("refreshToken", refreshToken, {
-		httpOnly: true,
-		secure: false,
-		sameSite: "none",
-		maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-	});
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: `OTP Sent to Email: ${payload.email}`,
+    data: null,
+  });
+});
+const resetPassword = catchAsync(async (req: Request, res: Response) => {
+  const payload = req.body;
 
-	sendResponse(res, {
-		statusCode: httpStatus.OK,
-		success: true,
-		message: "New tokens generated successfully",
-		data: {
-			accessToken,
-			refreshToken,
-		},
-	});
+  await AuthService.resetPassword(payload);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Password Changed Successfully",
+    data: null,
+  });
+});
+
+const logOut = catchAsync(async (req: Request, res: Response) => {
+  const cookieOptions = {
+    httpOnly: true,
+    secure: config.node_env === "development" ? false : true,
+    sameSite: (config.node_env === "development" ? "lax" : "none") as
+      | "lax"
+      | "none",
+  };
+
+  res.clearCookie("accessToken", cookieOptions);
+  res.clearCookie("refreshToken", cookieOptions);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "User Logged Out Successfully",
+    data: null,
+  });
 });
 
 export const AuthController = {
-	registerPatient,
-	loginUser,
-	getMe,
-	refreshToken,
-	googleLogin,
+  registerPatient,
+  verifyPatientEmail,
+  resendOtp,
+  loginUser,
+  getMe,
+  refreshToken,
+  googleLogin,
+  forgotPassword,
+  resetPassword,
+  logOut,
 };
